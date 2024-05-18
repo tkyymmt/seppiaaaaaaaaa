@@ -1,0 +1,17 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type Client {
+  id: Int!
+  name: String!
+  email: String!
+}
+
+type Query {
+  clients: [Client!]!
+}
+
+type Mutation {
+  createClient(name: String!, email: String!): Client!
+}

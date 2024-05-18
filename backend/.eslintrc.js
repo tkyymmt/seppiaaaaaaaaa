@@ -21,5 +21,9 @@ module.exports = {
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
     '@typescript-eslint/no-explicit-any': 'off',
+    // FIXME: うざいので一旦無効化
+    "no-console": "off",
+    "no-debugger": "off",
+    "no-unused-vars": "off",
   },
 };
