@@ -17,12 +17,16 @@
     "@mantine/hooks": "^7.9.1",
     "@mantine/next": "^6.0.21",
     "@types/firebase": "^3.2.1",
+    "@urql/core": "^5.0.3",
+    "@urql/devtools": "^2.0.3",
+    "@urql/preact": "^4.1.0",
     "firebase": "^10.12.0",
     "graphql": "^16.8.1",
     "next": "13.5.6",
     "react": "^18",
     "react-dom": "^18",
-    "urql": "^4.1.0"
+    "urql": "^4.1.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20",

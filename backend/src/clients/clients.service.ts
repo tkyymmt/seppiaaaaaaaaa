@@ -7,11 +7,11 @@ import { Prisma } from '@prisma/client';
 export class ClientsService {
   constructor(private prisma: PrismaService) {}
 
-  async createClient(data: Prisma.ClientsCreateInput): Promise<Client> {
-    return this.prisma.clients.create({ data });
+  async createClient(data: Prisma.ClientCreateInput): Promise<Client> {
+    return this.prisma.client.create({ data });
   }
 
   async findAll(): Promise<Client[]> {
-    return this.prisma.clients.findMany();
+    return this.prisma.client.findMany();
   }
 }

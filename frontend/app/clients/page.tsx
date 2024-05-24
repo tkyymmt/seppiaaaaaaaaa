@@ -1,29 +1,34 @@
 'use client';
 
 import cx from 'clsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Checkbox, ScrollArea, Group, Avatar, Text, rem, Button, Container, Modal, TextInput, MultiSelect } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import classes from '../css/Row.module.css';
 import { Client } from '../models/client';
+import { z } from 'zod';
+import { clientSchema } from '../lib/zod';
+import { useMutation, useQuery } from 'urql';
+import { CREATE_CLIENTS_HASURA, CREATE_CLIENT_HASURA, DELETE_CLIENT_HASURA, GET_CLIENTS, UPDATE_CLIENT_HASURA } from '../graphql/queries';
+import { Category } from '../models/category';
 
-const initialClients = [
-  new Client('1', 'Robert Wolfkisser', 'rob_wolf@gmail.com', []),
-];
-
-const categories = ['カテゴリー1', 'カテゴリー2', 'カテゴリー3'];
 
 // FIXME: ログインしていないユーザーを/loginにリダイレクトさせる認証ガードを実装する。
 export default function ClientsPage() {
   const [selection, setSelection] = useState<string[]>([]);
-  const [clients, setClients] = useState(initialClients);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [categories] = useState<Category[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [isClientModalOpened, setIsClientModalOpened] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleteConfirmModalOpened, setIsDeleteConfirmModalOpened] = useState(false);
   const [isCategoryModalOpened, setIsCategoryModalOpened] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [createDBClientResult, createDBClient] = useMutation(CREATE_CLIENT_HASURA);
+  const [createDBClientsResult, createDBClients] = useMutation(CREATE_CLIENTS_HASURA);
+  const [updateDBClientResult, updateDBClient] = useMutation(UPDATE_CLIENT_HASURA);
+  const [deleteDBClientResult, deleteDBClient] = useMutation(DELETE_CLIENT_HASURA);
   const form = useForm({
     initialValues: {
       name: '',
@@ -34,6 +39,19 @@ export default function ClientsPage() {
       email: (value) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : '有効なメールアドレスを入力してください。'),
     },
   });
+
+  const [result] = useQuery({ query: GET_CLIENTS });
+  const { data, fetching, error } = result;
+  // FIXME: swr を使用したら簡潔に書けるしキャッシュも上手く扱ってくれる。
+  useEffect(() => {
+    if (data && data.clients) {
+      setClients(data.clients.map((client: any) => new Client(client.id, client.name, client.email, client.categories)));
+    }
+  }, [data]); // FIXME: dataの更新のたびにDBからすべてのClientsを取得してしまっている
+
+  if (fetching) return <p>Loading...</p>;
+  if (error) return <p>Oh no... {error.message}</p>;
+
 
   const toggleRow = (id: string) =>
     setSelection((current) =>
@@ -46,29 +64,51 @@ export default function ClientsPage() {
     client.name.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  const addNewClient = (values: any) => {
-    // FIXME: idを自動生成する
-    const newClient = new Client(String(clients.length + 1), values.name, values.email, []);
-    setClients(current => current === null ? [newClient] : [...current!, newClient]);
+  const addNewClient = async (values: any) => {
+    try {
+      const name = values.name;
+      const email = values.email;
+      clientSchema.parse({  name, email });
+      const response = await createDBClient({ name, email });
+      if (response.error) {
+        alert(response.error.message);
+        return;
+      }
+      // // FIXME: APIから返ってきたデータをClientオブジェクトへ変換するコンバーターを作るべき
+      // useEffectでClientのリストを更新するので不要な様子
+      // const newClientData = response.data.insert_clients.returning[0];
+      // const newClient = new Client(newClientData.id, newClientData.name, newClientData.email, []);
+      // setClients(current => [...current, newClient]);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        alert('An validation error occurred');
+      }
+    }
+    
     setIsClientModalOpened(false);
     form.reset();
   };
 
-  const updateClient = (values: any) => {
+  const updateClient = async (values: any) => {
     if (client === null) return;
 
-    client.name = values.name;
-    client.email = values.email;
-    setClients(current => current.map((c) => c.id === client.id ? client : c));
+    const response = await updateDBClient({ id: client.id, name: values.name, email: values.email });
+    if (response.error) {
+      alert('Failed to update client');
+      return;
+    }
     setIsClientModalOpened(false);
     form.reset();
   };
 
-  const deleteClient = () => {
+  const deleteClient = async () => {
     if (client === null) return;
 
-    const newClients = clients.filter(c => c.id !== client.id);
-    setClients(newClients);
+    const response = await deleteDBClient({ id: client.id });
+    if (response.error) {
+      alert('Failed to delete client');
+      return;
+    }
     setIsDeleteConfirmModalOpened(false);
   };
 
@@ -114,8 +154,7 @@ export default function ClientsPage() {
     setIsDeleteConfirmModalOpened(true)
   }
 
-  //FIXME:
-  const pickClientsCSV = () => {
+  const pickClientsCSV = async () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.csv';
@@ -123,15 +162,26 @@ export default function ClientsPage() {
       const file = (event.target as HTMLInputElement).files?.[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
           const contents = event.target?.result as string;
           const lines = contents.split('\n');
           lines.shift(); // 1行目をヘッダーとして削除
-          const newClients = lines.map((line) => {
-            const [name, email] = line.split(',');
-            return new Client(String(clients.length + 1), name, email, []);
-          });
-          setClients(current => [...current, ...newClients]);
+          const newClientsObj = lines.map((line) => {
+              const [name, email] = line.split(',');
+              const obj = { name: name, email: email };
+              try {
+                clientSchema.parse(obj);
+              } catch (error) {
+                return;
+              }
+              return obj;
+            }).filter((obj) => obj !== undefined) as { name: string, email: string }[];
+
+          const response = await createDBClients({ clients: newClientsObj });
+          if (response.error) {
+            alert(response.error.message);
+            return;
+          }
         };
         reader.readAsText(file);
       }
@@ -143,12 +193,12 @@ export default function ClientsPage() {
     setIsCategoryModalOpened(true);
   }
   const addClientsToCategory = (category: string[]) => {
-    if (category === null) return;
+    if ( category.length === 0) return;
 
     // FIXME: 選択された顧客を指定されたカテゴリーに追加するロジックを実装
     console.log(`Selected clients: ${selection} will be added to category: ${category}`);
     setIsCategoryModalOpened(false);
-    setSelectedCategories([]);
+    setSelectedCategoryNames([]);
   }
 
   // FIXME: paginationにする？
@@ -179,12 +229,12 @@ export default function ClientsPage() {
           <MultiSelect
             label="カテゴリーを選択"
             placeholder="カテゴリーを選択"
-            data={categories}
-            value={selectedCategories}
-            onChange={setSelectedCategories}
+            data={categories.map((category) => category.name)}
+            value={selectedCategoryNames}
+            onChange={setSelectedCategoryNames}
           />
           <Group justify="right" mt="md">
-            <Button onClick={() => addClientsToCategory(selectedCategories)}>追加</Button>
+            <Button onClick={() => addClientsToCategory(selectedCategoryNames)}>追加</Button>
           </Group>
         </Modal>
 

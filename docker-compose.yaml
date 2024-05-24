@@ -1,0 +1,50 @@
+version: '3.6'
+services:
+  postgres:
+    image: postgres:13
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: user
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  hasura:
+    image: hasura/graphql-engine:latest
+    ports:
+      - "8080:8080"
+    restart: always
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://user:password@postgres:5432/mydb
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # Remove or set to "false" in production
+      HASURA_GRAPHQL_ADMIN_SECRET: adminsecret
+    depends_on:
+      - postgres
+  # Next.jsとNest.jsの環境はわざわざDockerで構築しなくてもいいかな
+  # frontend:
+  #   image: node:20
+  #   working_dir: /usr/src/app
+  #   volumes:
+  #     - ./frontend:/usr/src/app
+  #   ports:
+  #     - "3000:3000"
+  #   command: sh -c "npm install && npm run dev"
+  #   depends_on:
+  #     - postgres
+
+  # backend:
+  #   image: node:20
+  #   working_dir: /usr/src/app
+  #   volumes:
+  #     - ./backend:/usr/src/app
+  #   ports:
+  #     - "3001:3001"
+  #   command: sh -c "npm install && npm run start:dev"
+  #   depends_on:
+  #     - postgres
+
+volumes:
+  postgres_data:

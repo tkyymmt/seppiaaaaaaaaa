@@ -3,7 +3,7 @@ import { useDisclosure } from '@mantine/hooks';
 
 const navItems = [
     { link: '/clients', label: '顧客', },
-    { link: '/client_categories', label: '顧客カテゴリ', },
+    { link: '/categories', label: '顧客カテゴリ', },
 ];
 
 export default function Header({

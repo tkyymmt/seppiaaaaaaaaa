@@ -1,4 +1,4 @@
-import { ClientCategory } from "./client_category";
+import { Category } from "./category";
 
 // immutableにしたい
 export class Client {
@@ -6,6 +6,6 @@ export class Client {
         public id: string,
         public name: string,
         public email: string,
-        public categories: ClientCategory[],
+        public categories: Category[],
     ) { }
 }
