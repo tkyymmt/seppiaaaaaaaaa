@@ -1,23 +1,26 @@
 'use client';
 
 import cx from 'clsx';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Table, Checkbox, ScrollArea, Group, Avatar, Text, rem, Button, Container, Modal, TextInput, MultiSelect } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import classes from '../css/Row.module.css';
 import { Client } from '../models/client';
 import { z } from 'zod';
 import { clientSchema } from '../lib/zod';
-import { useMutation, useQuery } from 'urql';
-import { CREATE_CLIENTS_HASURA, CREATE_CLIENT_HASURA, DELETE_CLIENT_HASURA, GET_CLIENTS, UPDATE_CLIENT_HASURA } from '../graphql/queries';
+import { AnyVariables, DocumentInput, useMutation, useQuery } from 'urql';
+import { CREATE_CLIENTS_HASURA, CREATE_CLIENT_HASURA, DELETE_CLIENT_HASURA, GET_CATEGORIES, GET_CLIENTS, UPDATE_CLIENT_HASURA } from '../graphql/queries';
 import { Category } from '../models/category';
+import Loading from './loading';
+import { linkClientsToCategories } from '../lib/api';
+import { auth } from '../lib/firebase';
 
 
 // FIXME: ログインしていないユーザーを/loginにリダイレクトさせる認証ガードを実装する。
 export default function ClientsPage() {
-  const [selection, setSelection] = useState<string[]>([]);
+  const [selectedClientIds, setSelectedClientIds] = useState<number[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [categories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [isClientModalOpened, setIsClientModalOpened] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -29,6 +32,7 @@ export default function ClientsPage() {
   const [createDBClientsResult, createDBClients] = useMutation(CREATE_CLIENTS_HASURA);
   const [updateDBClientResult, updateDBClient] = useMutation(UPDATE_CLIENT_HASURA);
   const [deleteDBClientResult, deleteDBClient] = useMutation(DELETE_CLIENT_HASURA);
+  // const [addCategoriesToClientsResult, addCategoriesToClients] = useMutation(ADD_CATEGORIES_TO_CLIENTS);
   const form = useForm({
     initialValues: {
       name: '',
@@ -40,25 +44,29 @@ export default function ClientsPage() {
     },
   });
 
-  const [result] = useQuery({ query: GET_CLIENTS });
-  const { data, fetching, error } = result;
+  const [clientsResult] = useQuery({ query: GET_CLIENTS });
+  const [categoriesResult] = useQuery({ query: GET_CATEGORIES });
+  const clientsData = clientsResult.data;
+  const categoriesData = categoriesResult.data;
+
+
+
   // FIXME: swr を使用したら簡潔に書けるしキャッシュも上手く扱ってくれる。
   useEffect(() => {
-    if (data && data.clients) {
-      setClients(data.clients.map((client: any) => new Client(client.id, client.name, client.email, client.categories)));
+    if (clientsData && clientsData.clients) {
+      setClients(clientsData.clients.map((client: any) => new Client(client.id, client.name, client.email, client.categories)));
     }
-  }, [data]); // FIXME: dataの更新のたびにDBからすべてのClientsを取得してしまっている
+    if (categoriesData && categoriesData.categories) {
+      setCategories(categoriesData.categories.map((category: any) => new Category(category.id, category.name, category.clients)));
+    }
+  }, [clientsData, categoriesData]); // FIXME: dataの更新のたびにDBからすべてのClientsを取得してしまっている
 
-  if (fetching) return <p>Loading...</p>;
-  if (error) return <p>Oh no... {error.message}</p>;
-
-
-  const toggleRow = (id: string) =>
-    setSelection((current) =>
+  const toggleRow = (id: number) =>
+    setSelectedClientIds((current: number[]) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
     );
   const toggleAll = () =>
-    setSelection((current) => (current.length === clients.length ? [] : clients.map((item) => item.id)));
+    setSelectedClientIds((current) => (current.length === clients.length ? [] : clients.map((item) => item.id)));
 
   const filteredClients = clients.filter((client) =>
     client.name.toLowerCase().includes(searchText.toLowerCase())
@@ -68,8 +76,9 @@ export default function ClientsPage() {
     try {
       const name = values.name;
       const email = values.email;
-      clientSchema.parse({  name, email });
-      const response = await createDBClient({ name, email });
+      const uid = auth.currentUser?.uid;
+      clientSchema.parse({ name, email, uid });
+      const response = await createDBClient({ name, email, uid });
       if (response.error) {
         alert(response.error.message);
         return;
@@ -84,7 +93,7 @@ export default function ClientsPage() {
         alert('An validation error occurred');
       }
     }
-    
+
     setIsClientModalOpened(false);
     form.reset();
   };
@@ -110,14 +119,15 @@ export default function ClientsPage() {
       return;
     }
     setIsDeleteConfirmModalOpened(false);
+    setSelectedClientIds([]);
   };
 
   const rows = filteredClients.map((client) => {
-    const selected = selection.includes(client.id);
+    const selected = selectedClientIds.includes(client.id);
     return (
       <Table.Tr key={client.id} className={cx({ [classes.rowSelected]: selected })}>
         <Table.Td>
-          <Checkbox checked={selection.includes(client.id)} onChange={() => toggleRow(client.id)} />
+          <Checkbox checked={selectedClientIds.includes(client.id)} onChange={() => toggleRow(client.id)} />
         </Table.Td>
         <Table.Td>
           <Group gap="sm">
@@ -167,15 +177,15 @@ export default function ClientsPage() {
           const lines = contents.split('\n');
           lines.shift(); // 1行目をヘッダーとして削除
           const newClientsObj = lines.map((line) => {
-              const [name, email] = line.split(',');
-              const obj = { name: name, email: email };
-              try {
-                clientSchema.parse(obj);
-              } catch (error) {
-                return;
-              }
-              return obj;
-            }).filter((obj) => obj !== undefined) as { name: string, email: string }[];
+            const [name, email] = line.split(',');
+            const obj = { name: name, email: email, uid: auth.currentUser?.uid };
+            try {
+              clientSchema.parse(obj);
+            } catch (error) {
+              return;
+            }
+            return obj;
+          }).filter((obj) => obj !== undefined) as { name: string, email: string, uid: string }[];
 
           const response = await createDBClients({ clients: newClientsObj });
           if (response.error) {
@@ -192,79 +202,90 @@ export default function ClientsPage() {
   const openCategoryAddDialog = () => {
     setIsCategoryModalOpened(true);
   }
-  const addClientsToCategory = (category: string[]) => {
-    if ( category.length === 0) return;
+  const addClientsToCategory = async (categoryNames: string[]) => {
+    if (categoryNames.length === 0) return;
 
-    // FIXME: 選択された顧客を指定されたカテゴリーに追加するロジックを実装
-    console.log(`Selected clients: ${selection} will be added to category: ${category}`);
+    const selectedCategoryIds = categories.filter((category) => {
+      return categoryNames.includes(category.name);
+    }).map((category) => category.id);
+
+    const response = await linkClientsToCategories({ clientIds: selectedClientIds, categoryIds: selectedCategoryIds });
+    if (!response.ok) {
+      const errorData = await response.json();
+      alert(errorData.message);
+      return;
+    }
+
     setIsCategoryModalOpened(false);
     setSelectedCategoryNames([]);
+    setSelectedClientIds([]);
   }
 
-  // FIXME: paginationにする？
   return (
-    <Container size="md" my={40}>
-      <ScrollArea>
-        {/* 顧客モーダル Add or Edit */}
-        <Modal opened={isClientModalOpened} onClose={() => setIsClientModalOpened(false)} title={isEditing ? "顧客編集" : "顧客追加"}>
-          <form onSubmit={form.onSubmit(isEditing ? updateClient : addNewClient)}>
-            <TextInput label="名前" {...form.getInputProps('name')} />
-            <TextInput mt="sm" label="メールアドレス" {...form.getInputProps('email')} />
+    <Suspense fallback={<Loading />}>
+      <Container size="md" my={40}>
+        <ScrollArea>
+          {/* 顧客モーダル Add or Edit */}
+          <Modal opened={isClientModalOpened} onClose={() => setIsClientModalOpened(false)} title={isEditing ? "顧客編集" : "顧客追加"}>
+            <form onSubmit={form.onSubmit(isEditing ? updateClient : addNewClient)}>
+              <TextInput label="名前" {...form.getInputProps('name')} />
+              <TextInput mt="sm" label="メールアドレス" {...form.getInputProps('email')} />
+              <Group justify="right" mt="md">
+                <Button type="submit">{isEditing ? "編集" : "追加"}</Button>
+              </Group>
+            </form>
+          </Modal>
+
+          {/* 顧客削除モーダル */}
+          <Modal opened={isDeleteConfirmModalOpened} onClose={() => setIsDeleteConfirmModalOpened(false)} title="顧客削除">
+            <Text size='sm'>削除しますがよろしいですか？</Text>
             <Group justify="right" mt="md">
-              <Button type="submit">{isEditing ? "編集" : "追加"}</Button>
+              <Button color='red' onClick={deleteClient}>削除</Button>
             </Group>
-          </form>
-        </Modal>
+          </Modal>
 
-        {/* 顧客削除モーダル */}
-        <Modal opened={isDeleteConfirmModalOpened} onClose={() => setIsDeleteConfirmModalOpened(false)} title="顧客削除">
-          <Text size='sm'>削除しますがよろしいですか？</Text>
-          <Group justify="right" mt="md">
-            <Button color='red' onClick={deleteClient}>削除</Button>
-          </Group>
-        </Modal>
+          {/* 顧客カテゴリー用モーダル */}
+          <Modal opened={isCategoryModalOpened} onClose={() => setIsCategoryModalOpened(false)} title="顧客カテゴリーに追加">
+            <MultiSelect
+              label="カテゴリーを選択"
+              placeholder="カテゴリーを選択"
+              data={categories.map((category) => category.name)}
+              value={selectedCategoryNames}
+              onChange={setSelectedCategoryNames}
+            />
+            <Group justify="right" mt="md">
+              <Button onClick={() => addClientsToCategory(selectedCategoryNames)}>追加</Button>
+            </Group>
+          </Modal>
 
-        {/* 顧客カテゴリー用モーダル */}
-        <Modal opened={isCategoryModalOpened} onClose={() => setIsCategoryModalOpened(false)} title="顧客カテゴリーに追加">
-          <MultiSelect
-            label="カテゴリーを選択"
-            placeholder="カテゴリーを選択"
-            data={categories.map((category) => category.name)}
-            value={selectedCategoryNames}
-            onChange={setSelectedCategoryNames}
+          <TextInput
+            placeholder="名前で検索"
+            value={searchText}
+            onChange={(event) => setSearchText(event.currentTarget.value)}
+            mb="xl"
           />
-          <Group justify="right" mt="md">
-            <Button onClick={() => addClientsToCategory(selectedCategoryNames)}>追加</Button>
-          </Group>
-        </Modal>
-
-        <TextInput
-          placeholder="名前で検索"
-          value={searchText}
-          onChange={(event) => setSearchText(event.currentTarget.value)}
-          mb="xl"
-        />
-        <Button mb={20} onClick={() => openClientAddDialog()}>追加</Button>
-        <Button ml={20} mb={20} onClick={() => pickClientsCSV()}>CSVをインポート</Button>
-        <Button ml={20} mb={20} onClick={() => openCategoryAddDialog()} disabled={selection.length === 0}>カテゴリーに追加</Button>
-        <Table miw={800} verticalSpacing="sm">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th style={{ width: rem(40) }}>
-                <Checkbox
-                  onChange={toggleAll}
-                  checked={selection.length === clients.length}
-                  indeterminate={selection.length > 0 && selection.length !== clients.length}
-                />
-              </Table.Th>
-              <Table.Th>名前</Table.Th>
-              <Table.Th>メールアドレス</Table.Th>
-              <Table.Th>アクション</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>{rows}</Table.Tbody>
-        </Table>
-      </ScrollArea>
-    </Container >
+          <Button mb={20} onClick={() => openClientAddDialog()}>追加</Button>
+          <Button ml={20} mb={20} onClick={() => pickClientsCSV()}>CSVをインポート</Button>
+          <Button ml={20} mb={20} onClick={() => openCategoryAddDialog()} disabled={selectedClientIds.length === 0}>カテゴリーに追加</Button>
+          <Table miw={800} verticalSpacing="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th style={{ width: rem(40) }}>
+                  <Checkbox
+                    onChange={toggleAll}
+                    checked={selectedClientIds.length === clients.length}
+                    indeterminate={selectedClientIds.length > 0 && selectedClientIds.length !== clients.length}
+                  />
+                </Table.Th>
+                <Table.Th>名前</Table.Th>
+                <Table.Th>メールアドレス</Table.Th>
+                <Table.Th>アクション</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>{rows}</Table.Tbody>
+          </Table>
+        </ScrollArea>
+      </Container >
+    </Suspense>
   );
 }

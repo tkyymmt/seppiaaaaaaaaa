@@ -14,30 +14,22 @@ datasource db {
 }
 
 model Client {
-  id    Int    @id @default(autoincrement())
-  name  String @unique // FIXME: 名寄せのためにunique制約をつけてみたが、UniqueKeyとしてではなく、Indexとして扱われるので、名寄せには使えない。
-  email String @unique
-  // categories ClientCategory[]
+  id         Int        @id @default(autoincrement())
+  name       String     @unique // FIXME: 名寄せのためにunique制約をつけてみたが、UniqueKeyとしてではなく、Indexとして扱われるので、名寄せには使えない。
+  email      String     @unique
+  categories Category[]
+  uid        String // FirebaseAuthのUID
 
   // テーブル名がPascalCaseになって、Hasuraで扱いにくいので、明示的に指定。
   @@map("clients")
 }
 
 model Category {
-  id   Int    @id @default(autoincrement())
-  name String @unique
-  // clients ClientCategory[]
+  id      Int      @id @default(autoincrement())
+  name    String   @unique
+  clients Client[]
+  uid     String // FirebaseAuthのUID
 
   // テーブル名がPascalCaseになって、Hasuraで扱いにくいので、明示的に指定。
   @@map("categories")
 }
-
-// model ClientCategory {
-//   clientId   Int
-//   categoryId Int
-//   client     Client   @relation(fields: [clientId], references: [id])
-//   category   Category @relation(fields: [categoryId], references: [id])
-
-//   @@id([clientId, categoryId]) // 複合主キーを設定
-//   @@map("clients_categories")
-// }

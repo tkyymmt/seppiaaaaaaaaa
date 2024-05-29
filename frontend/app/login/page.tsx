@@ -2,7 +2,7 @@
 
 import { login } from '../lib/auth';
 import { auth } from '../lib/firebase';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     TextInput,
@@ -18,6 +18,8 @@ import {
     Loader,
 } from '@mantine/core';
 import classes from './LoginPage.module.css';
+import Loading from './loading';
+import { getIdToken } from 'firebase/auth';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -54,55 +56,56 @@ export default function LoginPage() {
         try {
             await login(email, password);
             if (auth.currentUser !== null) {
-                router.push('/');
-            } 
-        } catch (error:any) {
+                router.push('/clients');
+            }
+        } catch (error: any) {
             setError('Error logging in: ' + error.message);
-            console.error('Error logging in:', error);
         } finally {
             setLoading(false); // ローディング終了
         }
     };
 
     return (
-        <Container size={420} my={40}>
-            <Title ta="center" className={classes.title}>
-                Welcome back!
-            </Title>
-            <Paper withBorder shadow="md" p={30} mt={30} radius="md">
-                <form onSubmit={handleSubmit}>
-                    <TextInput
-                        label="Email"
-                        placeholder="you@example.com"
-                        required
-                        value={email}
-                        onChange={handleEmailChange}
-                        type='email'
-                        error={error && !isEmailValid}
-                    />
-                    <PasswordInput
-                        label="Password"
-                        placeholder="Your password"
-                        required
-                        type='password'
-                        mt="md"
-                        value={password}
-                        onChange={handlePasswordChange}
-                        error={error && !isPasswordValid}
-                    />
-                    <Group justify="space-between"  mt="lg">
-                        <Checkbox label="Remember me" />
-                        <Anchor component="button" size="sm" onClick={() => router.push('/forgot-password')}>
-                            Forgot password?
-                        </Anchor>
-                    </Group>
-                    <Button type="submit" fullWidth mt="xl" disabled={loading}>
-                        Sign in
-                        {loading ? <Loader size="sm" /> : 'Sign in'}
-                    </Button>
-                    {error && <Text color="red" size="sm" mt="sm">{error}</Text>}
-                </form>
-            </Paper>
-        </Container>
+        <Suspense fallback={<Loading />}>
+            <Container size={420} my={40}>
+                <Title ta="center" className={classes.title}>
+                    Welcome back!
+                </Title>
+                <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+                    <form onSubmit={handleSubmit}>
+                        <TextInput
+                            label="Email"
+                            placeholder="you@example.com"
+                            required
+                            value={email}
+                            onChange={handleEmailChange}
+                            type='email'
+                            error={error && !isEmailValid}
+                        />
+                        <PasswordInput
+                            label="Password"
+                            placeholder="Your password"
+                            required
+                            type='password'
+                            mt="md"
+                            value={password}
+                            onChange={handlePasswordChange}
+                            error={error && !isPasswordValid}
+                        />
+                        <Group justify="space-between" mt="lg">
+                            <Checkbox label="Remember me" />
+                            <Anchor component="button" size="sm" onClick={() => router.push('/forgot-password')}>
+                                Forgot password?
+                            </Anchor>
+                        </Group>
+                        <Button type="submit" fullWidth mt="xl" disabled={loading}>
+                            Sign in
+                            {loading ? <Loader size="sm" /> : 'Sign in'}
+                        </Button>
+                        {error && <Text color="red" size="sm" mt="sm">{error}</Text>}
+                    </form>
+                </Paper>
+            </Container>
+        </Suspense>
     );
 }

@@ -1,6 +1,6 @@
 import { gql } from 'urql';
 
-export const GET_CLIENTS= gql`
+export const GET_CLIENTS = gql`
   query {
     clients {
       id
@@ -11,20 +11,21 @@ export const GET_CLIENTS= gql`
 `;
 
 export const CREATE_CLIENT_HASURA = gql`
-  mutation CreateClient($name: String!, $email: String!) {
-    insert_clients(
-      objects: {
-        name: $name,
-        email: $email,
-      }
-    ) {
-      returning {
-        id
-        name
-        email
-      }
+mutation CreateClient($email: String!, $name: String!, $uid: String!) {
+  insert_clients(
+    objects: {
+      name: $name,
+      email: $email,
+      uid: $uid
+    }
+  ) {
+    returning {
+      id
+      name
+      email
     }
   }
+}
 `;
 
 export const CREATE_CLIENTS_HASURA = gql`
@@ -75,34 +76,29 @@ export const DELETE_CLIENT_HASURA = gql`
   }
 `;
 
-// export const CREATE_CLIENT_NEST = gql`
-//   mutation($name: String!, $email: String!) {
-//     createClient(name: $name, email: $email) {
-//       id
-//       name
-//       email
-//     }
-//   }
-// `;
-//  clients {
-//         id
-//         name
-//         email
-//       }
-
 export const GET_CATEGORIES = gql`
   query {
     categories {
       id
       name
+      _CategoryToClients {
+        client {
+          id
+          name
+          email
+        }
+      }
     }
   }
 `;
 
 export const CREATE_CATEGORY_HASURA = gql`
-  mutation CreateCategory($name: String!) {
+  mutation CreateCategory($name: String!, $uid: String!) {
     insert_categories(
-      objects: {name: $name}
+      objects: {
+        name: $name
+        uid: $uid
+      }
     ) {
       returning {
         id

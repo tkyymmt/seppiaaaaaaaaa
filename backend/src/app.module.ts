@@ -1,18 +1,14 @@
+/* eslint-disable prettier/prettier */
 import { Module } from '@nestjs/common';
-import { GraphQLModule } from '@nestjs/graphql';
-import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { join } from 'path';
 import { ClientsModule } from './clients/clients.module';
 import { PrismaModule } from 'prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
-    GraphQLModule.forRoot<ApolloDriverConfig>({
-      driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-    }),
     PrismaModule,
     ClientsModule,
+    AuthModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }
